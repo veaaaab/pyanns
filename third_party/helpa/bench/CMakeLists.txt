@@ -1,0 +1,2 @@
+add_executable(bench_single bench_single.cc)
+target_link_libraries(bench_single helpa benchmark benchmark_main)
