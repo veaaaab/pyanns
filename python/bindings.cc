@@ -12,6 +12,7 @@
 #include "pyanns/hnsw/hnsw.hpp"
 #include "pyanns/nsg/nsg.hpp"
 #include "pyanns/searcher/graph_searcher.hpp"
+#include "pyanns/searcher/sparse_graph_searcher.hpp"
 #include "pyanns/searcher/sparse_searcher.hpp"
 
 namespace py = pybind11;
@@ -85,6 +86,16 @@ struct IndexSparse {
   auto inverted_index() { return index.inverted_index; }
 };
 
+struct SparseHNSWIndex {
+  pyanns::SparseHNSW index;
+
+  SparseHNSWIndex(int R = 32, int L = 200) : index(R, L) {}
+
+  Graph build(const std::string &filename) {
+    index.Build(filename);
+    return Graph(index.GetGraph());
+  }
+};
 
 struct Index {
   std::unique_ptr<pyanns::Builder> index = nullptr;
@@ -110,6 +121,30 @@ struct Index {
     index->Build(vector_data, rows);
     return Graph(index->GetGraph());
   }
+};
+
+struct SparseGraphSearcher {
+  pyanns::SparseGraphSearcher searcher;
+
+  SparseGraphSearcher(const std::string &filename, const std::string &graphfile)
+      : searcher(filename, graphfile) {}
+
+  py::object batch_search(int32_t nq, py::object indptr, py::object indices,
+                          py::object data, int32_t topk, float budget) {
+    py::array_t<int32_t, py::array::c_style | py::array::forcecast> indptr_x(
+        indptr);
+    py::array_t<int32_t, py::array::c_style | py::array::forcecast> indices_x(
+        indices);
+    py::array_t<float, py::array::c_style | py::array::forcecast> data_x(data);
+    int32_t *ids = new int32_t[nq * topk];
+    searcher.SearchBatch(nq, (int32_t *)indptr_x.data(0),
+                         (int32_t *)indices_x.data(0), (float *)data_x.data(0),
+                         topk, ids, budget);
+    py::capsule free_when_done(ids, [](void *f) { delete[] f; });
+    return py::array_t<int>({nq * topk}, {sizeof(int)}, ids, free_when_done);
+  }
+
+  void set_ef(int ef) { searcher.SetEf(ef); }
 };
 
 struct Searcher {
@@ -202,6 +237,18 @@ PYBIND11_PLUGIN(pyanns) {
            py::arg("indptr"), py::arg("indices"), py::arg("data"),
            py::arg("topk"), py::arg("budget"), py::arg("refine_mul"))
       .def_property_readonly("inverted_index", &IndexSparse::inverted_index);
+
+  py::class_<SparseHNSWIndex>(m, "SparseHNSWIndex")
+      .def(py::init<int32_t, int32_t>(), py::arg("R"), py::arg("L"))
+      .def("build", &SparseHNSWIndex::build, py::arg("filename"));
+
+  py::class_<SparseGraphSearcher>(m, "SparseGrapSearcher")
+      .def(py::init<const std::string &, const std::string &>(),
+           py::arg("filename"), py::arg("graphfile"))
+      .def("set_ef", &SparseGraphSearcher::set_ef, py::arg("ef"))
+      .def("search_batch", &SparseGraphSearcher::batch_search, py::arg("nq"),
+           py::arg("indptr"), py::arg("indices"), py::arg("data"),
+           py::arg("topk"), py::arg("budget"));
 
   return m.ptr();
 }

@@ -13,7 +13,7 @@ namespace pyanns {
 typedef unsigned int tableint;
 typedef unsigned int linklistsizeint;
 
-template <SymComputableQuantConcept QuantType> class HierarchicalNSW {
+template <typename QuantType> class HierarchicalNSW {
 public:
   const QuantType &quant;
   using ComputerType = typename QuantType::SymComputerType;
@@ -55,7 +55,7 @@ public:
                   size_t ef_construction = 200, size_t random_seed = 100)
       : quant(quant), computer(quant.get_sym_computer()),
         link_list_locks_(max_elements), element_levels_(max_elements), po(5),
-        pl(std::min(6, quant.code_size() / 64)) {
+        pl(1) {
     max_elements_ = max_elements;
     M_ = M;
     maxM_ = M_;
