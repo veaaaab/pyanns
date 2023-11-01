@@ -32,7 +32,7 @@ struct SparseGraphSearcher {
   SparseGraphSearcher(const std::string &filename,
                       const std::string &graphfile) {
     if (!std::filesystem::exists(graphfile)) {
-      SparseHNSW hnsw(32, 500);
+      SparseHNSW hnsw(32, 1000);
       hnsw.Build(filename);
       graph = hnsw.GetGraph();
       graph.save(graphfile);
