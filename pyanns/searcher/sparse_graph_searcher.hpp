@@ -32,7 +32,7 @@ struct SparseGraphSearcher {
   SparseGraphSearcher(const std::string &filename,
                       const std::string &graphfile) {
     if (!std::filesystem::exists(graphfile)) {
-      SparseHNSW hnsw(32, 200);
+      SparseHNSW hnsw(32, 500);
       hnsw.Build(filename);
       graph = hnsw.GetGraph();
       graph.save(graphfile);
@@ -81,10 +81,9 @@ struct SparseGraphSearcher {
         }
       }
     }
-    int32_t refine_k = topk * 5;
+    int32_t refine_k = ef;
     std::vector<int> refine_ids(refine_k * nq);
     {
-      Timer timer("FUCK! search");
 #pragma omp parallel for schedule(dynamic)
       for (int i = 0; i < nq; ++i) {
         Search(nnz[i], ids[i].data(), vals[i].data(), refine_k,
@@ -92,7 +91,6 @@ struct SparseGraphSearcher {
       }
     }
     {
-      Timer timer("FUCK! refine");
 #pragma omp parallel for schedule(dynamic)
       for (int i = 0; i < nq; ++i) {
         auto computer = quant.get_computer(
@@ -113,8 +111,10 @@ struct SparseGraphSearcher {
   void SearchImpl(inference::NeighborPoolConcept auto &pool,
                   ComputerConcept auto &computer) const {
     alignas(64) int32_t edge_buf[graph.K];
+    int po = 1, pl = 1;
     while (pool.has_next()) {
       auto u = pool.pop();
+      graph.prefetch(u, 1);
       int32_t edge_size = 0;
       for (int32_t i = 0; i < graph.K; ++i) {
         int32_t v = graph.at(u, i);
@@ -127,7 +127,13 @@ struct SparseGraphSearcher {
         pool.set_visited(v);
         edge_buf[edge_size++] = v;
       }
+      for (int i = 0; i < std::min(po, edge_size); ++i) {
+        computer.prefetch(edge_buf[i], pl);
+      }
       for (int i = 0; i < edge_size; ++i) {
+        if (i + po < edge_size) {
+          computer.prefetch(edge_buf[i + po], pl);
+        }
         auto v = edge_buf[i];
         auto cur_dist = computer(v);
         pool.insert(v, cur_dist);

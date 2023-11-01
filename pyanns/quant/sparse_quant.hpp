@@ -4,6 +4,7 @@
 #include "pyanns/quant/computer.hpp"
 #include "pyanns/quant/quant_base.hpp"
 #include "pyanns/quant/utils.hpp"
+#include "pyanns/simd/prefetch.hpp"
 
 #include <cmath>
 #include <fcntl.h>
@@ -81,7 +82,10 @@ struct SparseQuant {
     Computer(const type &quant, int32_t nnz, const int32_t *ids,
              const float *vals)
         : quant(quant), nnz(nnz), ids(ids), vals(vals) {}
-    void prefetch(int32_t u, int32_t lines) const {}
+    void prefetch(int32_t u, int32_t lines) const {
+      mem_prefetch((const char *)(quant.indices + quant.indptr[u]), 1);
+      mem_prefetch((const char *)(quant.data + quant.indptr[u]), 1);
+    }
 
     dist_type operator()(int32_t u) const {
       float sum = 0.0f;
